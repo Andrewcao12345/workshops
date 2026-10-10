@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Join the Waitlist</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="data.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <div class="logo" id="logo"></div>
+      <div>
+        <h1 id="name">Restaurant</h1>
+        <p class="muted small" id="cuisine"></p>
+      </div>
+    </header>
+
+    <!-- Unknown restaurant -->
+    <section id="notFound" class="card stack" hidden>
+      <h2>Restaurant not found</h2>
+      <p class="muted">This QR code doesn't match a restaurant in the demo.</p>
+      <a class="btn" href="index.html">See demo restaurants</a>
+    </section>
+
+    <!-- Step 1: join form -->
+    <form id="joinForm" class="card stack" hidden novalidate>
+      <div>
+        <h2>Join the waitlist</h2>
+        <p class="muted small" id="lineSummary"></p>
+      </div>
+      <div>
+        <label for="phone">Phone number</label>
+        <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="(555) 123-4567">
+        <div class="error" id="phoneError"></div>
+      </div>
+      <div>
+        <label>Party size</label>
+        <div class="party" id="party"></div>
+      </div>
+      <button class="btn" type="submit">Get my place in line</button>
+      <p class="muted small" style="text-align:center">We'll text you when your table is ready.</p>
+    </form>
+
+    <!-- Step 2: status -->
+    <section id="status" class="stack" hidden>
+      <div class="card hero" id="heroCard">
+        <p class="label" id="heroLabel">Your place in line</p>
+        <p class="big" id="position">#7</p>
+        <p class="muted" id="heroSub"></p>
+        <p class="muted small" id="heroPhone"></p>
+        <div class="progress"><div id="bar" style="width:0%"></div></div>
+      </div>
+
+      <div class="stats">
+        <div class="card stat">
+          <p class="label muted small">Est. wait</p>
+          <p class="val" id="wait">—</p>
+        </div>
+        <div class="card stat">
+          <p class="label muted small">Likely table</p>
+          <p class="val" id="tableName">—</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Where you'll probably sit</h3>
+        <p class="muted small" id="tableNote"></p>
+        <div class="floor" id="floor"><span class="door">Entrance</span></div>
+        <div class="legend">
+          <span style="--c:var(--accent)">Your table</span>
+          <span style="--c:var(--warn)">Finishing soon</span>
+          <span style="--c:var(--busy)">Occupied</span>
+          <span class="res">Reserved</span>
+        </div>
+      </div>
+
+      <button class="btn ghost" id="leave">Leave the waitlist</button>
+      <p class="muted small" style="text-align:center">Demo: the line moves up one spot every 10 seconds.</p>
+    </section>
+  </main>
+
+  <script>
+    const TICK_MS = 10000; // demo speed: one party seated every 10s
+    let timer;
+    const $ = id => document.getElementById(id);
+
+    const id = new URLSearchParams(location.search).get("r");
+    const r = RESTAURANTS[id];
+    const storeKey = "queueup:" + id;
+
+    if (!r) {
+      $("name").textContent = "QueueUp";
+      $("logo").textContent = "🍽️";
+      $("notFound").hidden = false;
+    } else {
+      document.documentElement.style.setProperty("--accent", r.accent);
+      document.title = `Join the Waitlist · ${r.name}`;
+      $("name").textContent = r.name;
+      $("cuisine").textContent = r.cuisine;
+      $("logo").textContent = r.emoji;
+      load() ? showStatus() : showForm();
+    }
+
+    // ---------- storage ----------
+    function load() {
+      try { return JSON.parse(localStorage.getItem(storeKey)); } catch { return null; }
+    }
+    function save(entry) {
+      try { localStorage.setItem(storeKey, JSON.stringify(entry)); } catch {}
+      window.__entry = entry; // fallback if storage is blocked
+    }
+    function clear() {
+      try { localStorage.removeItem(storeKey); } catch {}
+      window.__entry = null;
+    }
+
+    // ---------- step 1 ----------
+    function showForm() {
+      $("status").hidden = true;
+      $("joinForm").hidden = false;
+      $("lineSummary").textContent =
+        `${r.partiesAhead} parties ahead · about ${(r.partiesAhead + 1) * r.minutesPerParty} min wait`;
+
+      let partySize = 2;
+      const party = $("party");
+      party.innerHTML = "";
+      ["1", "2", "3", "4", "5", "6+"].forEach((label, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = label;
+        b.setAttribute("aria-pressed", i + 1 === partySize);
+        b.onclick = () => {
+          partySize = i + 1;
+          party.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+        };
+        party.appendChild(b);
+      });
+
+      const phone = $("phone");
+      phone.oninput = () => {
+        const d = phone.value.replace(/\D/g, "").slice(0, 10);
+        phone.value =
+          d.length > 6 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` :
+          d.length > 3 ? `(${d.slice(0, 3)}) ${d.slice(3)}` :
+          d.length ? `(${d}` : "";
+        $("phoneError").textContent = "";
+      };
+
+      $("joinForm").onsubmit = e => {
+        e.preventDefault();
+        const digits = phone.value.replace(/\D/g, "");
+        if (digits.length !== 10) {
+          $("phoneError").textContent = "Please enter a 10-digit phone number.";
+          phone.focus();
+          return;
+        }
+        save({ phone: digits, partySize, joinedAt: Date.now() });
+        showStatus();
+      };
+    }
+
+    // ---------- step 2 ----------
+    function showStatus() {
+      const entry = load() || window.__entry;
+      $("joinForm").hidden = true;
+      $("status").hidden = false;
+
+      const table = guessTable(r, entry.partySize);
+      $("tableName").textContent = "#" + table.id;
+      $("tableNote").textContent =
+        `Table ${table.id} seats ${table.seats}` +
+        (table.status === "finishing" ? " and is finishing up soon." : ". Your best fit for a party of " + entry.partySize + ".");
+      drawFloor(table);
+
+      const startPos = r.partiesAhead + 1;
+      const render = () => {
+        const moved = Math.floor((Date.now() - entry.joinedAt) / TICK_MS);
+        const pos = Math.max(startPos - moved, 0);
+        const masked = `(${entry.phone.slice(0, 3)}) •••-${entry.phone.slice(6)}`;
+
+        if (pos === 0) {
+          $("heroCard").classList.add("ready");
+          $("heroLabel").textContent = "Your table is ready!";
+          $("position").textContent = "🎉";
+          $("heroSub").textContent = `Head to the host stand — Table ${table.id} is waiting. We texted ${masked}.`;
+          $("wait").innerHTML = "Now";
+          $("heroPhone").textContent = "";
+          $("bar").style.width = "100%";
+          clearInterval(timer);
+          return;
+        }
+        $("heroCard").classList.remove("ready");
+        $("heroLabel").textContent = "Your place in line";
+        $("position").textContent = "#" + pos;
+        $("heroSub").textContent =
+          (pos === 1 ? "You're next!" : `${pos - 1} ${pos - 1 === 1 ? "party" : "parties"} ahead of you`) +
+          ` · party of ${entry.partySize}`;
+        $("heroPhone").textContent = masked;
+        $("wait").innerHTML = `${pos * r.minutesPerParty}<small> min</small>`;
+        $("bar").style.width = `${((startPos - pos) / startPos) * 100}%`;
+      };
+      render();
+      clearInterval(timer);
+      timer = setInterval(render, 1000);
+    }
+
+    function drawFloor(mine) {
+      const floor = $("floor");
+      floor.querySelectorAll(".table").forEach(t => t.remove());
+      for (const t of r.tables) {
+        const el = document.createElement("div");
+        el.className = `table ${t.shape} ${t.status}` + (t === mine ? " mine" : "");
+        el.style.left = t.x + "%";
+        el.style.top = t.y + "%";
+        el.textContent = t.id;
+        el.title = `Table ${t.id} · ${t.seats} seats · ${t.status}`;
+        floor.appendChild(el);
+      }
+    }
+
+    $("leave").onclick = () => {
+      if (!confirm("Leave the waitlist? You'll lose your spot.")) return;
+      clearInterval(timer);
+      clear();
+      $("heroCard").classList.remove("ready");
+      showForm();
+    };
+  </script>
+</body>
+</html>

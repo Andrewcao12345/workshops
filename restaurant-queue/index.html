@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QueueUp — Restaurant Waitlist</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="qrcode.min.js"></script>
+  <script src="data.js"></script>
+</head>
+<body>
+  <main class="wrap wide">
+    <header class="stack" style="margin-bottom:28px">
+      <span class="pill">Mockup</span>
+      <h1>QueueUp</h1>
+      <p class="muted">Each restaurant prints a QR code at the host stand. Guests scan it, enter their phone number,
+        and see their place in line, estimated wait, and the table they'll probably get.
+        Scan a code with your phone, or tap “Open waitlist” to try it here.</p>
+    </header>
+    <section class="grid" id="posters"></section>
+  </main>
+
+  <script>
+    const base = new URL("join.html", location.href);
+    const posters = document.getElementById("posters");
+
+    for (const [id, r] of Object.entries(RESTAURANTS)) {
+      const url = new URL(base);
+      url.searchParams.set("r", id);
+
+      const card = document.createElement("article");
+      card.className = "card poster";
+      card.style.setProperty("--accent", r.accent);
+      card.innerHTML = `
+        <div style="font-size:40px">${r.emoji}</div>
+        <h2>${r.name}</h2>
+        <p class="muted small">${r.cuisine}</p>
+        <div class="qr"></div>
+        <p class="small muted">Scan to join the waitlist<br>
+          ~${(r.partiesAhead + 1) * r.minutesPerParty} min wait · ${r.partiesAhead} parties ahead</p>
+        <a class="btn" href="${url}">Open waitlist</a>`;
+      posters.appendChild(card);
+
+      const qrBox = card.querySelector(".qr");
+      if (window.QRCode) {
+        new QRCode(qrBox, { text: url.href, width: 360, height: 360, correctLevel: QRCode.CorrectLevel.M });
+      } else {
+        qrBox.textContent = "QR library failed to load";
+      }
+    }
+  </script>
+</body>
+</html>
